@@ -1,0 +1,27 @@
+*.DS_Store
+
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+*/xlsx/*
+*/xlsx
+*.xlsx
+*.csv
+*.json
+*.log
+*.txt
+*.yaml
+*.yml
+*.jsonl
+*.jsonl.gz
+*.jsonl.bz2
+*.jsonl.xz
+*.jsonl.lzma
