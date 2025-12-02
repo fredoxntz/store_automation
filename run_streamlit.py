@@ -37,6 +37,7 @@ if os.environ.get("RUN_AS_STREAMLIT") == "1":
         "--browser.gatherUsageStats=false",
         "--global.developmentMode=false",
         "--server.port=8501",
+        "--server.address=0.0.0.0",  # 네트워크 접속 허용
     ]
     stcli.main()
     sys.exit(0)
@@ -72,6 +73,7 @@ def start_streamlit():
                 "--browser.gatherUsageStats=false",
                 "--global.developmentMode=false",
                 "--server.port=8501",
+                "--server.address=0.0.0.0",  # 네트워크 접속 허용
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.STDOUT,
@@ -97,11 +99,24 @@ def quit_app(root):
     root.destroy()
     sys.exit(0)
 
+def get_local_ip():
+    """로컬 네트워크 IP 주소 가져오기"""
+    import socket
+    try:
+        # 더미 연결을 만들어서 로컬 IP 확인
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+        return local_ip
+    except Exception:
+        return "IP를 가져올 수 없음"
+
 def create_gui():
     """GUI 생성"""
     root = tk.Tk()
     root.title("송장 자동화")
-    root.geometry("500x250")
+    root.geometry("600x350")
     root.resizable(False, False)
 
     # 창 닫기 이벤트 처리
@@ -129,15 +144,34 @@ def create_gui():
 
     # URL 표시
     url_frame = ttk.Frame(main_frame)
-    url_frame.pack(pady=(0, 20))
+    url_frame.pack(pady=(0, 10))
 
     url_label = ttk.Label(
         url_frame,
-        text=f"접속 주소: {APP_URL}",
+        text=f"🖥️  이 컴퓨터: {APP_URL}",
         font=("Courier", 11),
         foreground="blue"
     )
     url_label.pack()
+
+    # 네트워크 접속 주소 표시
+    local_ip = get_local_ip()
+    network_label = ttk.Label(
+        url_frame,
+        text=f"🌐 네트워크 접속: http://{local_ip}:8501",
+        font=("Courier", 11),
+        foreground="green"
+    )
+    network_label.pack(pady=(5, 0))
+
+    # 네트워크 안내
+    network_info = ttk.Label(
+        url_frame,
+        text=f"같은 WiFi를 사용하는 기기에서 위 주소로 접속하세요",
+        font=("Helvetica", 9),
+        foreground="gray"
+    )
+    network_info.pack(pady=(5, 0))
 
     # 버튼 프레임
     button_frame = ttk.Frame(main_frame)
