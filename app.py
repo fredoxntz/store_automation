@@ -49,25 +49,230 @@ def save_openai_api_key(api_key: str):
 
 
 def test_openai_api(api_key: str, message: str):
-    """OpenAI API를 테스트합니다."""
+    """OpenAI API를 테스트합니다. (Responses API)"""
     try:
-        import openai
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key)
 
-        client = openai.OpenAI(api_key=api_key)
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
+        response = client.responses.create(
+            model="gpt-5.1-2025-11-13",
+            input=[
                 {"role": "system", "content": "You are a helpful assistant. Please respond in Korean."},
                 {"role": "user", "content": message}
             ],
-            max_tokens=500,
-            temperature=0.7
+            max_output_tokens=500
         )
-        return {"success": True, "message": response.choices[0].message.content}
-    except ImportError:
-        return {"success": False, "message": "openai 패키지가 설치되어 있지 않습니다. 'pip install openai'를 실행하세요."}
+
+        return {"success": True, "message": response.output_text}
+
     except Exception as e:
         return {"success": False, "message": f"API 오류: {str(e)}"}
+
+def parse_naver_option(option_str: str) -> dict:
+    """네이버 옵션정보를 파싱합니다."""
+    result = {
+        "보내시는분": "",
+        "도착희망날짜_원본": "",
+        "과일선물옵션": "",
+        "크리스탈보자기": ""
+    }
+
+    if pd.isna(option_str):
+        return result
+
+    # " / "로 분리
+    parts = str(option_str).split(" / ")
+
+    for part in parts:
+        if ":" in part:
+            key, value = part.split(":", 1)
+            key = key.strip()
+            value = value.strip()
+
+            if "보내시는 분" in key:
+                result["보내시는분"] = value
+            elif "도착 희망 날짜" in key or "도착희망날짜" in key:
+                result["도착희망날짜_원본"] = value
+            elif "과일 선물 옵션" in key or "과일선물옵션" in key:
+                result["과일선물옵션"] = value
+            elif "크리스탈 보자기" in key:
+                result["크리스탈보자기"] = value
+
+    return result
+
+
+def normalize_dates_batch_with_ai(api_key: str, date_list: list) -> dict:
+    """AI를 사용하여 날짜 배열을 일괄 정규화합니다. (Responses API 기반, 오류 안전 처리 포함)"""
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key)
+
+        dates_json = json.dumps(date_list, ensure_ascii=False)
+
+        prompt = f"""
+다음 JSON 배열의 각 날짜 텍스트를 YYYY-MM-DD 형식으로 변환해주세요.
+"최대한 빨리", "빠른배송" 등 날짜가 아닌 경우 "빠른배송"으로 변환하세요.
+날짜 정보가 불확실하다고 판단될때는 인풋에 있는 날짜 정보를 참고해서 변환하세요. 
+변환하는 날짜들은 비슷한 시점입니다.
+
+입력: {dates_json}
+
+출력은 반드시 "원본": "변환결과" 형태의 JSON 객체로만 답변하세요. 설명은 하지 마세요.
+예시: {{"9월30일": "2024-09-30", "10/1": "2024-10-01", "최대한 빨리": "빠른배송"}}
+"""
+
+        response = client.responses.create(
+            model="gpt-5.1-2025-11-13",
+            input=prompt,
+            max_output_tokens=1000,
+        )
+
+        result_text = (response.output_text or "").strip()
+
+        # 1) 출력이 비었으면 에러 처리
+        if not result_text:
+            return {date: "오류: 빈 응답" for date in date_list}
+
+        # 2) 코드블록 제거
+        if result_text.startswith("```"):
+            parts = result_text.split("```")
+            if len(parts) >= 2:
+                result_text = parts[1]
+            result_text = result_text.replace("json", "").strip()
+
+        # 3) JSON만 추출 (앞뒤 텍스트 제거)
+        #    → { ... } 만 찾아서 parse
+        import re
+        json_match = re.search(r"\{.*\}", result_text, re.DOTALL)
+        if json_match:
+            result_text = json_match.group(0).strip()
+        else:
+            return {date: "오류: JSON 출력 아님" for date in date_list}
+
+        # 4) JSON 파싱
+        try:
+            return json.loads(result_text)
+        except Exception:
+            return {date: f"오류: JSON 파싱 실패: {result_text}" for date in date_list}
+
+    except Exception as e:
+        return {date: f"오류: {str(e)}" for date in date_list}
+
+
+def create_naver_intermediate_table(df: pd.DataFrame, api_key: str) -> pd.DataFrame:
+    """네이버 로우데이터로부터 중간 테이블을 생성합니다."""
+    # 옵션정보 파싱
+    parsed_options = df["옵션정보"].apply(parse_naver_option)
+    parsed_df = pd.DataFrame(parsed_options.tolist())
+
+    # 중간 테이블 생성
+    intermediate = pd.DataFrame({
+        "상품주문번호": df["상품주문번호"],
+        "수취인명": df["수취인명"],
+        "수취인연락처1": df["수취인연락처1"],
+        "통합배송지": df["통합배송지"],
+        "배송메세지": df["배송메세지"],
+        "수량": df["수량"],
+        "옵션관리코드": df["옵션관리코드"],
+        "보내시는분": parsed_df["보내시는분"],
+        "도착희망날짜_원본": parsed_df["도착희망날짜_원본"],
+        "도착희망날짜_정규화": "",  # AI로 채울 예정
+        "과일선물옵션": parsed_df["과일선물옵션"],
+    })
+
+    return intermediate
+
+
+def normalize_dates_batch(intermediate_df: pd.DataFrame, api_key: str, progress_callback=None, debug_callback=None) -> pd.DataFrame:
+    """중간 테이블의 날짜를 일괄 정규화합니다. (배치 처리)"""
+    result_df = intermediate_df.copy()
+
+    # 유니크한 날짜 문자열만 추출
+    unique_dates = result_df["도착희망날짜_원본"].dropna().unique().tolist()
+
+    if not unique_dates:
+        return result_df
+
+    # 디버그: 유니크 값 개수 표시
+    if debug_callback:
+        debug_callback("info", f"📊 추출된 유니크 날짜: {len(unique_dates)}개")
+        debug_callback("unique_dates", unique_dates[:10])  # 처음 10개만 표시
+
+    # 날짜 변환 결과 캐시
+    date_mapping = {}
+
+    # 100개씩 배치로 나누기
+    batch_size = 30
+    total_batches = (len(unique_dates) + batch_size - 1) // batch_size
+
+    for batch_idx in range(total_batches):
+        start_idx = batch_idx * batch_size
+        end_idx = min((batch_idx + 1) * batch_size, len(unique_dates))
+        batch = unique_dates[start_idx:end_idx]
+
+        # 디버그: 배치 정보 표시
+        if debug_callback:
+            debug_callback("batch_start", f"배치 {batch_idx + 1}/{total_batches} - {len(batch)}개 날짜 처리 중...")
+
+        # 배치 단위로 AI 호출 (딕셔너리 반환)
+        batch_mapping = normalize_dates_batch_with_ai(api_key, batch)
+
+        # 디버그: AI 응답 표시
+        if debug_callback:
+            debug_callback("batch_result", {"batch_idx": batch_idx + 1, "mapping": batch_mapping})
+
+        # 결과를 전체 매핑에 병합
+        date_mapping.update(batch_mapping)
+
+        if progress_callback:
+            progress_callback(batch_idx + 1, total_batches)
+
+    # 매핑 적용
+    result_df["도착희망날짜_정규화"] = result_df["도착희망날짜_원본"].map(date_mapping).fillna("")
+
+    return result_df
+
+
+def generate_cj_orders_by_date(intermediate_df: pd.DataFrame, defaults: dict[str, str]) -> dict:
+    """날짜별로 CJ 발주서를 생성합니다."""
+    # 날짜별로 그룹화
+    grouped = intermediate_df.groupby("도착희망날짜_정규화")
+
+    results = {}
+
+    for date, group in grouped:
+        # CJ 발주서 형식으로 변환
+        qty = pd.to_numeric(group["수량"], errors="coerce").fillna(0).astype(int)
+        item_name = group["보내시는분"].fillna("OOO").astype(str) + "드림 " + group["옵션관리코드"].fillna("").astype(str)
+
+        cj_df = pd.DataFrame({
+            "보내는분성명": defaults["name"],
+            "보내는분전화번호": defaults["phone"],
+            "보내는분주소(전체,분할)": defaults["address"],
+            "운임구분": "신용",
+            "박스타입": "극소",
+            "기본운임": qty * 2200,
+            "고객주문번호": group["상품주문번호"],
+            "품목명": item_name,
+            "수량": qty,
+            "수취인이름": group["수취인명"],
+            "수취인전화번호": group["수취인연락처1"],
+            "수취인 주소": group["통합배송지"],
+            "배송메세지": group["배송메세지"],
+        })
+
+        # 엑셀 파일로 변환
+        buf = io.BytesIO()
+        cj_df.to_excel(buf, index=False)
+        buf.seek(0)
+
+        results[date] = {
+            "df": cj_df,
+            "data": buf.getvalue(),
+            "count": len(cj_df)
+        }
+
+    return results
 
 
 # Lightweight custom styling for a clean, card-like UI
@@ -191,6 +396,16 @@ if "show_settings" not in st.session_state:
     st.session_state.show_settings = False
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
+if "naver_cj_result" not in st.session_state:
+    st.session_state.naver_cj_result = None
+if "last_naver_uploaded_name" not in st.session_state:
+    st.session_state.last_naver_uploaded_name = None
+if "naver_intermediate_table" not in st.session_state:
+    st.session_state.naver_intermediate_table = None
+if "naver_raw_data" not in st.session_state:
+    st.session_state.naver_raw_data = None
+if "naver_workflow_step" not in st.session_state:
+    st.session_state.naver_workflow_step = "upload"  # upload -> parse -> review -> generate
 
 
 def reset():
@@ -352,6 +567,61 @@ def build_coupang_cj(df: pd.DataFrame, defaults: dict[str, str]) -> pd.DataFrame
     return output
 
 
+def build_naver_cj(df: pd.DataFrame, defaults: dict[str, str]) -> pd.DataFrame:
+    """Transform Naver raw data into CJ 발주서 format."""
+    required_cols = [
+        "수취인명",
+        "수취인연락처1",
+        "통합배송지",
+        "배송메세지",
+        "수량",
+        "옵션관리코드",
+        "상품주문번호",
+    ]
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        raise ValueError(f"누락된 필수 컬럼: {', '.join(missing)}")
+
+    def normalize_order(x):
+        if pd.isna(x):
+            return ""
+        if isinstance(x, float):
+            return str(int(x))
+        if isinstance(x, int):
+            return str(x)
+        s = str(x).strip()
+        if s.endswith(".0") and s.replace(".", "", 1).isdigit():
+            try:
+                return str(int(float(s)))
+            except Exception:
+                return s
+        return s
+
+    qty = pd.to_numeric(df["수량"], errors="coerce").fillna(0).astype(int)
+    # 네이버는 "OOO드림 {옵션관리코드}" 형식
+    item_name = "OOO드림 " + df["옵션관리코드"].fillna("").astype(str)
+    order_no = df["상품주문번호"].apply(normalize_order)
+
+    output = pd.DataFrame(
+        {
+            "보내는분성명": defaults["name"],
+            "보내는분전화번호": defaults["phone"],
+            "보내는분주소(전체,분할)": defaults["address"],
+            "운임구분": "신용",
+            "박스타입": "극소",
+            "기본운임": qty * 2200,
+            "고객주문번호": order_no,
+            "품목명": item_name,
+            "수량": qty,
+            "수취인이름": df["수취인명"],
+            "수취인전화번호": df["수취인연락처1"],
+            "수취인 주소": df["통합배송지"],
+            "배송메세지": df["배송메세지"],
+        }
+    )
+    return output
+
+
 def render_coupang_cj():
     st.markdown("**쿠팡 로우데이터 업로드**")
     uploaded = st.file_uploader(
@@ -398,6 +668,184 @@ def render_coupang_cj():
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             type="primary",
         )
+
+
+def render_naver_cj():
+    """네이버 CJ 발주서 생성 워크플로우 (중간 테이블 포함)"""
+
+    # API 키 확인
+    api_key = get_openai_api_key()
+    if not api_key:
+        st.warning("⚠️ OpenAI API 키가 필요합니다. 설정 페이지에서 API 키를 등록해주세요.")
+        return
+
+    # 워크플로우 상태 표시
+    steps = ["1️⃣ 파일 업로드", "2️⃣ 데이터 검수", "3️⃣ CJ 발주서 생성"]
+    current_step = st.session_state.naver_workflow_step
+
+    if current_step == "upload":
+        step_idx = 0
+    elif current_step == "review":
+        step_idx = 1
+    else:  # generate
+        step_idx = 2
+
+    st.markdown(f"**진행 단계:** {' → '.join([f'**{s}**' if i == step_idx else s for i, s in enumerate(steps)])}")
+    st.markdown("---")
+
+    # STEP 1: 파일 업로드
+    if current_step == "upload":
+        st.markdown("### 1️⃣ 네이버 로우데이터 업로드")
+        st.caption("네이버 엑셀 파일은 첫 행에 안내문이 있으므로 자동으로 처리됩니다.")
+
+        uploaded = st.file_uploader(
+            "네이버 로우데이터 엑셀 파일 (.xlsx)",
+            type=["xlsx"],
+            accept_multiple_files=False,
+            key="naver_cj_uploader"
+        )
+
+        if uploaded:
+            # 네이버는 header=1로 읽어야 함 (첫 행이 안내문)
+            df = pd.read_excel(uploaded, header=1)
+            st.session_state.naver_raw_data = df
+
+            st.caption(f"✅ 파일 로드 완료: {len(df)}개 주문")
+            st.dataframe(df.head(5), width="stretch")
+
+            if st.button("다음 단계: 데이터 파싱 및 검수", type="primary"):
+                with st.spinner("옵션정보 파싱 중..."):
+                    # 중간 테이블 생성
+                    intermediate = create_naver_intermediate_table(df, api_key)
+                    st.session_state.naver_intermediate_table = intermediate
+                    st.session_state.naver_workflow_step = "review"
+                    st.rerun()
+
+    # STEP 2: 데이터 검수
+    elif current_step == "review":
+        st.markdown("### 2️⃣ 데이터 검수 및 수정")
+        st.caption("AI가 날짜를 정규화합니다. 검수 후 필요 시 수정하세요.")
+
+        intermediate = st.session_state.naver_intermediate_table
+
+        # AI 날짜 정규화 버튼
+        if intermediate["도착희망날짜_정규화"].iloc[0] == "":
+            if st.button("🤖 AI로 날짜 자동 변환", type="primary"):
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                debug_container = st.expander("🔍 상세 로그 (디버깅)", expanded=True)
+
+                debug_logs = []
+
+                def update_progress(current, total):
+                    progress = current / total
+                    progress_bar.progress(progress)
+                    status_text.text(f"날짜 변환 중... (배치 {current}/{total})")
+
+                def debug_log(log_type, data):
+                    if log_type == "info":
+                        debug_logs.append(("info", data))
+                        with debug_container:
+                            st.info(data)
+                    elif log_type == "unique_dates":
+                        debug_logs.append(("unique", data))
+                        with debug_container:
+                            st.write("**📋 유니크 날짜 샘플 (처음 10개):**")
+                            st.write(data)
+                    elif log_type == "batch_start":
+                        debug_logs.append(("batch_start", data))
+                        with debug_container:
+                            st.write(f"⏳ {data}")
+                    elif log_type == "batch_result":
+                        debug_logs.append(("result", data))
+                        with debug_container:
+                            st.write(f"**✅ 배치 {data['batch_idx']} 결과:**")
+                            st.json(data["mapping"])
+
+                with st.spinner("AI로 날짜 정규화 중..."):
+                    intermediate = normalize_dates_batch(intermediate, api_key, update_progress, debug_log)
+                    st.session_state.naver_intermediate_table = intermediate
+
+                progress_bar.empty()
+                status_text.empty()
+                st.success("✅ 날짜 변환 완료!")
+                st.rerun()
+        else:
+            st.success("✅ 날짜 변환 완료")
+
+        # 데이터 편집기
+        st.markdown("**중간 테이블 (수정 가능)**")
+        st.caption("날짜가 잘못 변환된 경우 직접 수정할 수 있습니다. (YYYY-MM-DD 형식)")
+
+        edited_df = st.data_editor(
+            intermediate,
+            use_container_width=True,
+            num_rows="fixed",
+            disabled=["상품주문번호", "수취인명", "수취인연락처1", "통합배송지", "배송메세지", "수량", "옵션관리코드", "도착희망날짜_원본"],
+            key="naver_intermediate_editor"
+        )
+
+        st.session_state.naver_intermediate_table = edited_df
+
+        # 날짜별 통계
+        st.markdown("---")
+        st.markdown("**📊 날짜별 주문 통계**")
+        date_counts = edited_df["도착희망날짜_정규화"].value_counts().sort_index()
+        date_counts_df = date_counts.reset_index()
+        date_counts_df.columns = ["날짜", "주문 수"]
+        st.dataframe(date_counts_df, width="stretch")
+
+        # 버튼
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("← 처음부터 다시"):
+                st.session_state.naver_workflow_step = "upload"
+                st.session_state.naver_intermediate_table = None
+                st.session_state.naver_raw_data = None
+                st.rerun()
+        with col2:
+            if st.button("다음 단계: CJ 발주서 생성 →", type="primary"):
+                st.session_state.naver_workflow_step = "generate"
+                st.rerun()
+
+    # STEP 3: CJ 발주서 생성
+    elif current_step == "generate":
+        st.markdown("### 3️⃣ 날짜별 CJ 발주서 생성")
+
+        intermediate = st.session_state.naver_intermediate_table
+
+        if st.button("📦 CJ 발주서 생성", type="primary"):
+            with st.spinner("CJ 발주서 생성 중..."):
+                defaults = get_sender_defaults()
+                results = generate_cj_orders_by_date(intermediate, defaults)
+                st.session_state.naver_cj_result = results
+                st.success(f"✅ {len(results)}개 날짜별 발주서 생성 완료!")
+
+        # 결과 표시 및 다운로드
+        results = st.session_state.get("naver_cj_result")
+        if results:
+            st.markdown("---")
+            st.markdown("**📥 다운로드**")
+
+            for date, result in sorted(results.items()):
+                with st.expander(f"📅 {date} ({result['count']}건)"):
+                    st.dataframe(result["df"].head(10), width="stretch")
+                    st.download_button(
+                        f"다운로드: {date}",
+                        data=result["data"],
+                        file_name=f"네이버_CJ발주서_{date}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key=f"download_{date}"
+                    )
+
+        # 처음부터 다시 버튼
+        st.markdown("---")
+        if st.button("← 처음부터 다시"):
+            st.session_state.naver_workflow_step = "upload"
+            st.session_state.naver_intermediate_table = None
+            st.session_state.naver_raw_data = None
+            st.session_state.naver_cj_result = None
+            st.rerun()
 
 
 def build_coupang_bulk(raw_df: pd.DataFrame, cj_df: pd.DataFrame) -> pd.DataFrame:
@@ -733,6 +1181,8 @@ else:
 
         if st.session_state.job == "cj" and st.session_state.channel == "coupang":
             render_coupang_cj()
+        elif st.session_state.job == "cj" and st.session_state.channel == "naver":
+            render_naver_cj()
         elif st.session_state.job == "bulk" and st.session_state.channel == "coupang":
             render_coupang_bulk()
         else:
