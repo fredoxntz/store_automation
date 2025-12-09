@@ -1,4 +1,5 @@
 import io
+import json
 import datetime as dt
 from pathlib import Path
 
@@ -7,6 +8,67 @@ import streamlit as st
 
 
 st.set_page_config(page_title="송장 자동화", page_icon="📦", layout="wide")
+
+# 설정 파일 경로
+CONFIG_FILE = Path("config.json")
+
+
+def load_config():
+    """설정 파일에서 설정을 로드합니다."""
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+
+def save_config(config: dict):
+    """설정을 파일에 저장합니다."""
+    try:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        st.error(f"설정 저장 중 오류가 발생했습니다: {e}")
+        return False
+
+
+def get_openai_api_key():
+    """저장된 OpenAI API 키를 반환합니다."""
+    config = load_config()
+    return config.get("openai_api_key", "")
+
+
+def save_openai_api_key(api_key: str):
+    """OpenAI API 키를 저장합니다."""
+    config = load_config()
+    config["openai_api_key"] = api_key
+    return save_config(config)
+
+
+def test_openai_api(api_key: str, message: str):
+    """OpenAI API를 테스트합니다."""
+    try:
+        import openai
+
+        client = openai.OpenAI(api_key=api_key)
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant. Please respond in Korean."},
+                {"role": "user", "content": message}
+            ],
+            max_tokens=500,
+            temperature=0.7
+        )
+        return {"success": True, "message": response.choices[0].message.content}
+    except ImportError:
+        return {"success": False, "message": "openai 패키지가 설치되어 있지 않습니다. 'pip install openai'를 실행하세요."}
+    except Exception as e:
+        return {"success": False, "message": f"API 오류: {str(e)}"}
+
 
 # Lightweight custom styling for a clean, card-like UI
 st.markdown(
@@ -72,12 +134,43 @@ st.markdown(
         border-color: #a3c5ff;
         color: #153f85;
     }
+
+    /* Settings icon button - clean and minimal */
+    .settings-btn button {
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 8px !important;
+        font-size: 24px !important;
+        transition: all 0.2s ease !important;
+        color: #6b7280 !important;
+    }
+    .settings-btn button:hover {
+        background: transparent !important;
+        transform: rotate(90deg) scale(1.1) !important;
+        color: #1f2937 !important;
+        box-shadow: none !important;
+    }
+    .settings-btn button:active {
+        transform: rotate(90deg) scale(0.95) !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-st.title("📦 송장 자동화")
+# 타이틀과 설정 버튼
+col1, col2 = st.columns([10, 1])
+with col1:
+    st.title("📦 송장 자동화")
+with col2:
+    st.write("")  # 여백 추가
+    st.markdown('<div class="settings-btn">', unsafe_allow_html=True)
+    if st.button("⚙️", help="설정", key="settings_btn"):
+        st.session_state.show_settings = True
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
 st.caption("CJ 발주서 · 대량등록 파일 자동 생성")
 
 if "step" not in st.session_state:
@@ -94,6 +187,10 @@ if "last_uploaded_name" not in st.session_state:
     st.session_state.last_uploaded_name = None
 if "last_bulk_names" not in st.session_state:
     st.session_state.last_bulk_names = (None, None)
+if "show_settings" not in st.session_state:
+    st.session_state.show_settings = False
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
 
 def reset():
@@ -479,47 +576,166 @@ def render_coupang_bulk():
         )
 
 
-if st.session_state.step == "landing":
-    section_heading("무엇을 하시겠어요?")
+def render_settings():
+    """설정 페이지를 렌더링합니다."""
+    st.markdown("### ⚙️ 설정")
+    st.caption("OpenAI API 키를 설정하여 챗봇 기능을 사용할 수 있습니다.")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🚚 CJ 발주서 만들기", use_container_width=True, type="secondary"):
-            go("channel", job="cj")
+    st.markdown("---")
 
-    with col2:
-        if st.button("📑 대량등록 파일 만들기", use_container_width=True, type="secondary"):
-            go("channel", job="bulk")
+    # 현재 저장된 API 키 로드
+    current_api_key = get_openai_api_key()
 
-elif st.session_state.step == "channel":
-    section_heading(
-        "채널을 선택하세요",
-        f"선택 작업: {'CJ 발주서' if st.session_state.job == 'cj' else '대량등록 파일'}",
-    )
-
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🟢 네이버", use_container_width=True, type="secondary"):
-            go("form", channel="naver")
-
-    with col2:
-        if st.button("🟠 쿠팡", use_container_width=True, type="secondary"):
-            go("form", channel="coupang")
-
-    st.button("← 처음으로", on_click=reset)
-
-elif st.session_state.step == "form":
-    section_heading(
-        f"{'CJ 발주서' if st.session_state.job == 'cj' else '대량등록 파일'} · "
-        f"{st.session_state.channel.upper()}",
-        None,
-    )
-
-    if st.session_state.job == "cj" and st.session_state.channel == "coupang":
-        render_coupang_cj()
-    elif st.session_state.job == "bulk" and st.session_state.channel == "coupang":
-        render_coupang_bulk()
+    # API 키 표시 (마스킹)
+    if current_api_key:
+        masked_key = current_api_key[:8] + "*" * (len(current_api_key) - 12) + current_api_key[-4:] if len(current_api_key) > 12 else "****"
+        st.info(f"현재 저장된 API 키: `{masked_key}`")
     else:
-        st.info("이 채널/작업 조합에 대한 폼이 아직 준비되지 않았습니다.")
+        st.warning("저장된 API 키가 없습니다.")
 
-    st.button("← 채널 선택으로", on_click=lambda: st.session_state.update({"step": "channel"}))
+    st.markdown("#### OpenAI API 키 입력")
+
+    # API 키 입력 폼
+    with st.form("api_key_form"):
+        new_api_key = st.text_input(
+            "API 키",
+            value="",
+            type="password",
+            placeholder="sk-...",
+            help="OpenAI API 키를 입력하세요. API 키는 암호화되어 로컬에 저장됩니다."
+        )
+
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            submit = st.form_submit_button("저장", type="primary", use_container_width=True)
+        with col2:
+            clear = st.form_submit_button("삭제", use_container_width=True)
+
+        if submit:
+            if new_api_key.strip():
+                if save_openai_api_key(new_api_key.strip()):
+                    st.success("✅ API 키가 성공적으로 저장되었습니다!")
+                    st.rerun()
+            else:
+                st.error("API 키를 입력해주세요.")
+
+        if clear:
+            if save_openai_api_key(""):
+                st.success("✅ API 키가 삭제되었습니다.")
+                st.rerun()
+
+    st.markdown("---")
+    st.markdown("#### 🤖 API 연동 테스트")
+
+    # API 키가 저장되어 있는지 확인
+    if current_api_key:
+        st.caption("저장된 API 키로 간단한 채팅을 테스트해보세요.")
+
+        # 채팅 테스트 컨테이너
+        with st.container():
+            # 채팅 히스토리 표시
+            if st.session_state.chat_history:
+                st.markdown("**채팅 기록:**")
+                for chat in st.session_state.chat_history:
+                    if chat["role"] == "user":
+                        st.markdown(f"**👤 You:** {chat['content']}")
+                    else:
+                        st.markdown(f"**🤖 AI:** {chat['content']}")
+                st.markdown("---")
+
+            # 채팅 입력 폼
+            with st.form(key="chat_form", clear_on_submit=True):
+                col1, col2 = st.columns([5, 1])
+                with col1:
+                    user_input = st.text_input("메시지", placeholder="메시지를 입력하세요...", label_visibility="collapsed")
+                with col2:
+                    submit = st.form_submit_button("전송", use_container_width=True, type="primary")
+
+                if submit and user_input.strip():
+                    # 사용자 메시지 추가
+                    st.session_state.chat_history.append({"role": "user", "content": user_input.strip()})
+
+                    # API 호출
+                    with st.spinner("응답 생성 중..."):
+                        result = test_openai_api(current_api_key, user_input.strip())
+
+                    if result["success"]:
+                        # AI 응답 추가
+                        st.session_state.chat_history.append({"role": "assistant", "content": result["message"]})
+                    else:
+                        # 에러 메시지 추가
+                        st.session_state.chat_history.append({"role": "assistant", "content": f"❌ {result['message']}"})
+
+                    st.rerun()
+
+            # 채팅 히스토리 초기화 버튼
+            if st.session_state.chat_history:
+                if st.button("🗑️ 채팅 기록 지우기", use_container_width=False):
+                    st.session_state.chat_history = []
+                    st.rerun()
+    else:
+        st.info("API 키를 먼저 저장해주세요.")
+
+    st.markdown("---")
+    st.markdown("#### API 키 발급 안내")
+    st.markdown("""
+    1. [OpenAI 플랫폼](https://platform.openai.com/api-keys)에 로그인
+    2. API Keys 메뉴에서 'Create new secret key' 클릭
+    3. 생성된 키를 복사하여 위에 입력
+    """)
+
+    st.markdown("---")
+    if st.button("← 메인으로 돌아가기", use_container_width=False):
+        st.session_state.show_settings = False
+        st.rerun()
+
+
+# 설정 페이지와 메인 페이지 분기
+if st.session_state.show_settings:
+    render_settings()
+else:
+    # 메인 페이지 렌더링
+    if st.session_state.step == "landing":
+        section_heading("무엇을 하시겠어요?")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🚚 CJ 발주서 만들기", use_container_width=True, type="secondary"):
+                go("channel", job="cj")
+
+        with col2:
+            if st.button("📑 대량등록 파일 만들기", use_container_width=True, type="secondary"):
+                go("channel", job="bulk")
+
+    elif st.session_state.step == "channel":
+        section_heading(
+            "채널을 선택하세요",
+            f"선택 작업: {'CJ 발주서' if st.session_state.job == 'cj' else '대량등록 파일'}",
+        )
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🟢 네이버", use_container_width=True, type="secondary"):
+                go("form", channel="naver")
+
+        with col2:
+            if st.button("🟠 쿠팡", use_container_width=True, type="secondary"):
+                go("form", channel="coupang")
+
+        st.button("← 처음으로", on_click=reset)
+
+    elif st.session_state.step == "form":
+        section_heading(
+            f"{'CJ 발주서' if st.session_state.job == 'cj' else '대량등록 파일'} · "
+            f"{st.session_state.channel.upper()}",
+            None,
+        )
+
+        if st.session_state.job == "cj" and st.session_state.channel == "coupang":
+            render_coupang_cj()
+        elif st.session_state.job == "bulk" and st.session_state.channel == "coupang":
+            render_coupang_bulk()
+        else:
+            st.info("이 채널/작업 조합에 대한 폼이 아직 준비되지 않았습니다.")
+
+        st.button("← 채널 선택으로", on_click=lambda: st.session_state.update({"step": "channel"}))
