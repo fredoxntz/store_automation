@@ -6,7 +6,7 @@ def test_openai_api(api_key: str, message: str) -> dict:
         client = OpenAI(api_key=api_key)
 
         response = client.responses.create(
-            model="gpt-5.1-2025-11-13",
+            model="gpt-4.1-nano-2025-04-14",
             input=[
                 {"role": "system", "content": "You are a helpful assistant. Please respond in Korean."},
                 {"role": "user", "content": message},
