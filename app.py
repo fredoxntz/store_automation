@@ -12,80 +12,229 @@ st.set_page_config(page_title="송장 자동화", page_icon="📦", layout="wide
 STYLE = """
 <style>
 :root {
-    --bg: #eef2f8;
-    --text: #1f2d3d;
+    --bg: #ffffff;
+    --text: #1e293b;
+    --primary: #a8dadc;
+    --primary-dark: #457b9d;
+    --secondary: #b8d4e0;
 }
-body { background: radial-gradient(circle at 20% 20%, #f7f9ff, var(--bg)); color: var(--text); }
-.card { border-radius: 18px; padding: 18px 20px; background: white;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.06);
-        transition: transform .15s ease, box-shadow .15s ease; }
-.card:hover { transform: translateY(-4px); box-shadow: 0 14px 36px rgba(0,0,0,0.12); }
-.choice { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+
+/* Streamlit 기본 UI 제거/초기화 */
+[data-testid="stToolbar"],
+[data-testid="stDecoration"],
+header,
+footer,
+#MainMenu {
+    display: none;
+}
+[data-testid="stSidebar"] {
+    background: transparent;
+    box-shadow: none;
+}
+[data-testid="stSidebarNav"] {
+    padding: 0;
+}
+[data-testid="stHeader"] {
+    background: transparent;
+    box-shadow: none;
+}
+[data-testid="stAppViewContainer"],
+.stApp,
+.main {
+    padding: 0;
+    background: var(--bg);
+}
+.block-container {
+    padding: 0 32px 48px;
+    background: var(--bg);
+    max-width: 1200px;
+}
+
+/* 폼 요소 기본 스타일 재정의 */
+input, textarea, select {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    box-shadow: none;
+    background: #fff;
+    color: var(--text);
+}
+label, .stCheckbox, .stRadio {
+    color: var(--text);
+}
+/* 버튼 기본 스타일 재정의 */
+button, [role="button"] {
+    border-radius: 12px;
+    box-shadow: none;
+}
+
+/* 다크모드 강제 비활성화 */
+[data-testid="stAppViewContainer"],
+.stApp,
+.main,
+.block-container,
+body {
+    background-color: #f8fafc;
+    background: #f8fafc;
+    color: #1e293b;
+}
+
+[data-testid="stHeader"] {
+    background-color: transparent;
+}
+
+/* 모든 텍스트 요소 색상 고정 */
+p, span, div, label {
+    color: #1e293b;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.card {
+    border-radius: 20px;
+    padding: 24px;
+    background: white;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+}
 
 button[kind] {
-    background: #f2f4f8;
-    border: 1px solid #dfe4ed;
+    background: white;
+    border: 2px solid #e2e8f0;
     color: var(--text);
-    border-radius: 12px;
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.06);
-    transition: all 0.15s ease;
+    border-radius: 16px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    font-weight: 600;
+    letter-spacing: -0.02em;
 }
 button[kind]:hover {
-    background: #ffffff;
-    border-color: #cbd4e2;
-    transform: translateY(-1px);
-    box-shadow: 0 12px 26px rgba(0, 0, 0, 0.08);
+    background: #f8fafc;
+    border-color: var(--primary);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(168, 218, 220, 0.2);
 }
-button:focus { outline: none !important; box-shadow: 0 0 0 3px rgba(66, 99, 235, 0.2); }
+button:focus {
+    outline: none;
+    box-shadow: 0 0 0 4px rgba(168, 218, 220, 0.3);
+}
+
+[data-testid="stHorizontalBlock"]:has(button[aria-label="🚚 CJ 발주서 만들기"]),
+[data-testid="stHorizontalBlock"]:has(button[aria-label="📑 대량등록 파일 만들기"]),
+[data-testid="stHorizontalBlock"]:has(button[aria-label="🟢 네이버"]),
+[data-testid="stHorizontalBlock"]:has(button[aria-label="🟠 쿠팡"]) {
+    display: flex;
+    gap: 20px; /* 버튼 간격 고정 */
+}
+[data-testid="stHorizontalBlock"]:has(button[aria-label="🚚 CJ 발주서 만들기"]) [data-testid="column"],
+[data-testid="stHorizontalBlock"]:has(button[aria-label="📑 대량등록 파일 만들기"]) [data-testid="column"],
+[data-testid="stHorizontalBlock"]:has(button[aria-label="🟢 네이버"]) [data-testid="column"],
+[data-testid="stHorizontalBlock"]:has(button[aria-label="🟠 쿠팡"]) [data-testid="column"] {
+    width: auto; /* columns shrink to button size */
+}
+[data-testid="stHorizontalBlock"]:has(button[aria-label="🚚 CJ 발주서 만들기"]) > [data-testid="column"] > div,
+[data-testid="stHorizontalBlock"]:has(button[aria-label="📑 대량등록 파일 만들기"]) > [data-testid="column"] > div,
+[data-testid="stHorizontalBlock"]:has(button[aria-label="🟢 네이버"]) > [data-testid="column"] > div,
+[data-testid="stHorizontalBlock"]:has(button[aria-label="🟠 쿠팡"]) > [data-testid="column"] > div {
+    align-items: flex-start;
+}
 
 button[aria-label="🚚 CJ 발주서 만들기"],
 button[aria-label="📑 대량등록 파일 만들기"] {
-    max-width: 280px;
-    width: 100%;
+    width: 220px;
+    min-width: px;
+    max-width: 220px;
+    margin: 0;
+    display: block;
+    padding: 16px 28px;
+    background: linear-gradient(135deg, #a8dadc 0%, #89cff0 100%);
+    color: #1e293b;
+    font-size: 15px;
+    border: none;
+    font-weight: 700;
+}
+button[aria-label="🚚 CJ 발주서 만들기"]:hover,
+button[aria-label="📑 대량등록 파일 만들기"]:hover {
+    background: linear-gradient(135deg, #89cff0 0%, #6eb5d0 100%);
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 8px 30px rgba(168, 218, 220, 0.4);
+}
+
+button[aria-label="🟢 네이버"],
+button[aria-label="🟠 쿠팡"] {
+    margin: 0;
+    display: block;
+    padding: 16px 28px;
+    font-size: 15px;
+    font-weight: 700;
+    border: none;
 }
 
 button[aria-label="🟢 네이버"] {
-    background: #d8f3dc;
-    border-color: #b7e4c7;
-    color: #2b7a0b;
-    max-width: 240px;
-    width: 100%;
+    background: linear-gradient(135deg, #c9e4ca 0%, #a8d5ba 100%);
+    color: #1e5128;
 }
 button[aria-label="🟢 네이버"]:hover {
-    background: #e8f7ee;
-    border-color: #a3d9b2;
-    color: #246908;
+    background: linear-gradient(135deg, #a8d5ba 0%, #88c9a1 100%);
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 8px 30px rgba(168, 213, 186, 0.4);
 }
+
 button[aria-label="🟠 쿠팡"] {
-    background: #dbeafe;
-    border-color: #b6d4ff;
-    color: #1f4b99;
-    max-width: 240px;
-    width: 100%;
+    background: linear-gradient(135deg, #ffd7ba 0%, #ffb997 100%);
+    color: #7c2d12;
 }
 button[aria-label="🟠 쿠팡"]:hover {
-    background: #eef4ff;
-    border-color: #a3c5ff;
-    color: #153f85;
+    background: linear-gradient(135deg, #ffb997 0%, #ff9d6e 100%);
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 8px 30px rgba(255, 185, 151, 0.4);
 }
 
 .settings-btn button {
-    background: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
-    padding: 8px !important;
-    font-size: 24px !important;
-    transition: all 0.2s ease !important;
-    color: #6b7280 !important;
+    background: #f1f5f9;
+    border: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    padding: 10px;
+    font-size: 24px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    color: #64748b;
+    border-radius: 12px;
 }
 .settings-btn button:hover {
-    background: transparent !important;
-    transform: rotate(90deg) scale(1.1) !important;
-    color: #1f2937 !important;
-    box-shadow: none !important;
+    background: #e2e8f0;
+    transform: rotate(90deg) scale(1.15);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    color: var(--primary-dark);
 }
 .settings-btn button:active {
-    transform: rotate(90deg) scale(0.95) !important;
+    transform: rotate(90deg) scale(0.95);
+}
+
+/* 타이틀 스타일 */
+h1 {
+    color: #1e293b;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+}
+
+/* 서브타이틀 스타일 */
+.stCaption, [data-testid="stCaption"] {
+    color: #64748b;
+}
+
+h2, h3, h4, h5, h6 {
+    color: #1e293b;
+    font-weight: 700;
+}
+
+/* Streamlit 기본 스타일 오버라이드 */
+[data-testid="stMarkdownContainer"] {
+    color: #1e293b;
 }
 </style>
 """
@@ -158,13 +307,12 @@ def render_main():
     if st.session_state.step == "landing":
         section_heading("무엇을 하시겠어요?")
 
-        col1, col2 = st.columns(2)
+        col1, col2 = st.columns(2, gap="small")
         with col1:
-            if st.button("🚚 CJ 발주서 만들기", use_container_width=True, type="secondary"):
+            if st.button("🚚 CJ 발주서 만들기", type="secondary", key="cj_btn"):
                 go("channel", job="cj")
-
         with col2:
-            if st.button("📑 대량등록 파일 만들기", use_container_width=True, type="secondary"):
+            if st.button("📑 대량등록 파일 만들기", type="secondary", key="bulk_btn"):
                 go("channel", job="bulk")
 
     elif st.session_state.step == "channel":
@@ -173,13 +321,12 @@ def render_main():
             f"선택 작업: {'CJ 발주서' if st.session_state.job == 'cj' else '대량등록 파일'}",
         )
 
-        col1, col2 = st.columns(2)
+        col1, col2 = st.columns(2, gap="small")
         with col1:
-            if st.button("🟢 네이버", use_container_width=True, type="secondary"):
+            if st.button("🟢 네이버", type="secondary", key="naver_btn"):
                 go("form", channel="naver")
-
         with col2:
-            if st.button("🟠 쿠팡", use_container_width=True, type="secondary"):
+            if st.button("🟠 쿠팡", type="secondary", key="coupang_btn"):
                 go("form", channel="coupang")
 
         st.button("← 처음으로", on_click=reset)

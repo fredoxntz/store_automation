@@ -12,6 +12,7 @@ def clean_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _normalize_order(value):
+    """Normalize order number for matching - remove all spaces and convert to string."""
     if pd.isna(value):
         return ""
     if isinstance(value, float):
@@ -19,6 +20,8 @@ def _normalize_order(value):
     if isinstance(value, int):
         return str(value)
     s = str(value).strip()
+    # Remove all whitespace characters (spaces, tabs, newlines, etc.)
+    s = "".join(s.split())
     if s.endswith(".0") and s.replace(".", "", 1).isdigit():
         try:
             return str(int(float(s)))
@@ -70,14 +73,12 @@ def normalize_dates_batch_with_ai(api_key: str, date_list: list) -> dict:
 
         prompt = f"""
 다음 JSON 배열의 각 날짜 텍스트를 YYYY-MM-DD 형식으로 변환해주세요.
-"최대한 빨리", "빠른배송" 등 날짜가 아닌 경우 "빠른배송"으로 변환하세요.
 날짜 정보가 불확실하다고 판단될때는 인풋에 있는 날짜 정보를 참고해서 변환하세요. 
 변환하는 날짜들은 비슷한 시점입니다.
 10월 1일 또는 2일 이런 날짜는 10월 1일로 변환하세요.
 9월 30일 또는 10월 1일 이런 날짜는 9월 30일로 변환하세요.
 10월 2일 는 2025-10-02 이런식으로
-최대한 빨리 또는 빠른배송 이런 날짜는 빠른배송으로 변환하세요.
-연도 정보가 없다면 현재 날짜를 기준으로 확인해줘. 
+명확한 날짜가 아닌경우는 변환하지 말고 그대로 다시 변환결과에 넣어줘.
 
 입력: {dates_json}
 
@@ -244,16 +245,57 @@ def build_naver_bulk(raw_df: pd.DataFrame, cj_df: pd.DataFrame) -> pd.DataFrame:
     raw_df = clean_columns(raw_df).copy()
     cj_df = clean_columns(cj_df).copy()
 
+    # Normalize order numbers for matching
     raw_df["__key"] = raw_df["상품주문번호"].apply(_normalize_order)
     key_col = "고객주문번호" if "고객주문번호" in cj_df.columns else "주문번호"
     cj_df["__key"] = cj_df[key_col].apply(_normalize_order)
 
+    # Debug: Print sample keys for debugging
+    print("\n[DEBUG] 네이버 대량등록 매칭 디버깅:")
+    print(f"- 로우데이터 총 {len(raw_df)}건")
+    print(f"- CJ 파일 총 {len(cj_df)}건")
+    print(f"- CJ 파일에서 사용한 키 컬럼: {key_col}")
+    print("\n로우데이터 상품주문번호 샘플 (정규화 전 -> 후):")
+    for i in range(min(5, len(raw_df))):
+        original = raw_df.iloc[i]["상품주문번호"]
+        normalized = raw_df.iloc[i]["__key"]
+        print(f"  {i+1}. '{original}' (타입: {type(original).__name__}) -> '{normalized}'")
+    print("\nCJ 파일 고객주문번호 샘플 (정규화 전 -> 후):")
+    for i in range(min(5, len(cj_df))):
+        original = cj_df.iloc[i][key_col]
+        normalized = cj_df.iloc[i]["__key"]
+        print(f"  {i+1}. '{original}' (타입: {type(original).__name__}) -> '{normalized}'")
+
+    # Merge
     merged = raw_df.merge(
         cj_df[["__key", "운송장번호"]],
         on="__key",
         how="left",
         suffixes=("", "_cj"),
     )
+
+    # Debug: Check match results
+    matched_count = merged["운송장번호"].notna().sum() if "운송장번호" in merged.columns else 0
+    if "운송장번호_cj" in merged.columns:
+        matched_count = merged["운송장번호_cj"].notna().sum()
+
+    print(f"\n매칭 결과: {matched_count}/{len(merged)}건 매칭됨")
+
+    # Show unmatched items
+    if matched_count < len(merged):
+        unmatched_mask = merged["운송장번호_cj"].isna() if "운송장번호_cj" in merged.columns else merged["운송장번호"].isna()
+        unmatched = merged[unmatched_mask]["__key"].unique()
+        print(f"\n매칭 안 된 주문번호 ({len(unmatched)}개):")
+        for i, key in enumerate(unmatched[:10]):
+            print(f"  {i+1}. '{key}'")
+        if len(unmatched) > 10:
+            print(f"  ... 외 {len(unmatched) - 10}개")
+
+        # Check if these keys exist in CJ file
+        cj_keys = set(cj_df["__key"].unique())
+        print("\nCJ 파일에 있는 키 샘플 (최대 10개):")
+        for i, key in enumerate(list(cj_keys)[:10]):
+            print(f"  {i+1}. '{key}'")
 
     if "운송장번호_cj" in merged:
         merged["__송장"] = merged["운송장번호_cj"].fillna(merged.get("송장번호"))

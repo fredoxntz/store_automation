@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from utils.coupang_processor import build_coupang_cj, get_sender_defaults
+from utils.excel_utils import read_excel_with_password, render_password_input
 
 
 def render_coupang_cj():
@@ -13,14 +14,26 @@ def render_coupang_cj():
         "쿠팡 로우데이터 엑셀 파일 (.xlsx)", type=["xlsx"], accept_multiple_files=False
     )
 
+    password = None
+    if uploaded:
+        password = render_password_input("coupang_cj", "파일 비밀번호")
+
     if uploaded and uploaded.name != st.session_state.last_uploaded_name:
         st.session_state.coupang_cj_result = None
         st.session_state.last_uploaded_name = uploaded.name
 
     if uploaded:
-        df = pd.read_excel(uploaded)
-        st.caption("업로드 파일 미리보기 (최대 5행)")
-        st.dataframe(df.head(5), width="stretch")
+        try:
+            df = read_excel_with_password(uploaded, password)
+            st.caption("업로드 파일 미리보기 (최대 5행)")
+            st.dataframe(df.head(5), width="stretch")
+        except Exception as e:
+            st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
+            df = None
+    else:
+        df = None
+
+    if df is not None:
 
         if st.button("작업 실행", type="primary"):
             try:

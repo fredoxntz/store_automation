@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from utils.coupang_processor import build_coupang_bulk
+from utils.excel_utils import read_excel_with_password, render_password_input
 
 
 def render_coupang_bulk():
@@ -13,9 +14,16 @@ def render_coupang_bulk():
     raw_file = st.file_uploader(
         "쿠팡 로우데이터 (.xlsx)", type=["xlsx"], accept_multiple_files=False, key="raw_coupang_bulk"
     )
+    raw_password = None
+    if raw_file:
+        raw_password = render_password_input("raw_coupang", "로우데이터 파일 비밀번호")
+
     cj_file = st.file_uploader(
         "파일접수 상세내역 (.xlsx)", type=["xlsx"], accept_multiple_files=False, key="cj_bulk"
     )
+    cj_password = None
+    if cj_file:
+        cj_password = render_password_input("cj_coupang_bulk", "파일접수 상세내역 파일 비밀번호")
 
     files_key = (raw_file.name if raw_file else None, cj_file.name if cj_file else None)
     if files_key != st.session_state.last_bulk_names:
@@ -23,16 +31,24 @@ def render_coupang_bulk():
         st.session_state.last_bulk_names = files_key
 
     if raw_file:
-        df_raw = pd.read_excel(raw_file)
-        st.caption("로우데이터 미리보기 (최대 5행)")
-        st.dataframe(df_raw.head(5), width="stretch")
+        try:
+            df_raw = read_excel_with_password(raw_file, raw_password)
+            st.caption("로우데이터 미리보기 (최대 5행)")
+            st.dataframe(df_raw.head(5), width="stretch")
+        except Exception as e:
+            st.error(f"로우데이터 파일을 읽는 중 오류가 발생했습니다: {e}")
+            df_raw = None
     else:
         df_raw = None
 
     if cj_file:
-        df_cj = pd.read_excel(cj_file)
-        st.caption("파일접수 상세내역 미리보기 (최대 5행)")
-        st.dataframe(df_cj.head(5), width="stretch")
+        try:
+            df_cj = read_excel_with_password(cj_file, cj_password)
+            st.caption("파일접수 상세내역 미리보기 (최대 5행)")
+            st.dataframe(df_cj.head(5), width="stretch")
+        except Exception as e:
+            st.error(f"파일접수 상세내역 파일을 읽는 중 오류가 발생했습니다: {e}")
+            df_cj = None
     else:
         df_cj = None
 

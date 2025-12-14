@@ -8,6 +8,7 @@ from utils.naver_processor import (
     generate_cj_orders_by_date,
     normalize_dates_batch,
 )
+from utils.excel_utils import read_excel_with_password, render_password_input
 
 
 def render_naver_cj():
@@ -41,12 +42,24 @@ def render_naver_cj():
             key="naver_cj_uploader",
         )
 
+        password = None
         if uploaded:
-            df = pd.read_excel(uploaded, header=1)
-            st.session_state.naver_raw_data = df
+            password = render_password_input("naver_cj", "파일 비밀번호")
 
-            st.caption(f"✅ 파일 로드 완료: {len(df)}개 주문")
-            st.dataframe(df.head(5), width="stretch")
+        if uploaded:
+            try:
+                df = read_excel_with_password(uploaded, password, header=1)
+                st.session_state.naver_raw_data = df
+
+                st.caption(f"✅ 파일 로드 완료: {len(df)}개 주문")
+                st.dataframe(df.head(5), width="stretch")
+            except Exception as e:
+                st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
+                df = None
+        else:
+            df = None
+
+        if df is not None:
 
             if st.button("다음 단계: 데이터 파싱 및 검수", type="primary"):
                 with st.spinner("옵션정보 파싱 중..."):
