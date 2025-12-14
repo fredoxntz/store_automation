@@ -211,4 +211,8 @@ def build_coupang_bulk(raw_df: pd.DataFrame, cj_df: pd.DataFrame) -> pd.DataFram
 
     output = pd.DataFrame(data)
     output = output[output_cols]
+
+    # 주문번호 중복 제거 (첫 번째 행만 유지)
+    output = output.drop_duplicates(subset=['주문번호'], keep='first')
+
     return output
