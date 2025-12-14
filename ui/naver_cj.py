@@ -154,7 +154,7 @@ def render_naver_cj():
                 st.rerun()
 
     elif current_step == "generate":
-        st.markdown("### 3️⃣ 날짜별 CJ 발주서 생성")
+        st.markdown("### 3️⃣ CJ 발주서 생성")
 
         intermediate = st.session_state.naver_intermediate_table
 
@@ -163,23 +163,27 @@ def render_naver_cj():
                 defaults = get_sender_defaults()
                 results = generate_cj_orders_by_date(intermediate, defaults)
                 st.session_state.naver_cj_result = results
-                st.success(f"✅ {len(results)}개 날짜별 발주서 생성 완료!")
+                result = results.get("single")
+                if result:
+                    st.success(f"✅ CJ 발주서 생성 완료! (총 {result['count']}건)")
 
         results = st.session_state.get("naver_cj_result")
         if results:
             st.markdown("---")
             st.markdown("**📥 다운로드**")
 
-            for date, result in sorted(results.items()):
-                with st.expander(f"📅 {date} ({result['count']}건)"):
-                    st.dataframe(result["df"].head(10), width="stretch")
-                    st.download_button(
-                        f"다운로드: {date}",
-                        data=result["data"],
-                        file_name=f"네이버_CJ발주서_{date}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key=f"download_{date}",
-                    )
+            # 단일 파일로 변경
+            result = results.get("single")
+            if result:
+                st.caption(f"✅ 총 {result['count']}건의 발주서가 생성되었습니다.")
+                st.dataframe(result["df"].head(20), width="stretch")
+                st.download_button(
+                    "다운로드: 네이버 CJ 발주서",
+                    data=result["data"],
+                    file_name=result["filename"],
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",
+                )
 
         st.markdown("---")
         if st.button("← 처음부터 다시"):

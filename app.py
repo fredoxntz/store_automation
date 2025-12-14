@@ -5,6 +5,8 @@ from ui.coupang_cj import render_coupang_cj
 from ui.naver_cj import render_naver_cj
 from ui.naver_bulk import render_naver_bulk
 from ui.settings import render_settings
+from ui.login import render_login
+from utils.auth import is_authenticated, logout
 
 
 st.set_page_config(page_title="송장 자동화", page_icon="📦", layout="wide")
@@ -258,6 +260,7 @@ def init_session_state():
         "naver_intermediate_table": None,
         "naver_raw_data": None,
         "naver_workflow_step": "upload",
+        "authenticated": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -289,7 +292,7 @@ def go(step: str, job: str | None = None, channel: str | None = None):
 def render_header():
     st.markdown(STYLE, unsafe_allow_html=True)
 
-    col1, col2 = st.columns([10, 1])
+    col1, col2, col3 = st.columns([9, 1, 1])
     with col1:
         st.title("📦 송장 자동화")
     with col2:
@@ -297,6 +300,13 @@ def render_header():
         st.markdown('<div class="settings-btn">', unsafe_allow_html=True)
         if st.button("⚙️", help="설정", key="settings_btn"):
             st.session_state.show_settings = True
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+    with col3:
+        st.write("")
+        st.markdown('<div class="settings-btn">', unsafe_allow_html=True)
+        if st.button("🚪", help="로그아웃", key="logout_btn"):
+            logout()
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -354,6 +364,12 @@ def render_main():
 
 def main():
     init_session_state()
+
+    # 인증 체크
+    if not is_authenticated():
+        render_login()
+        return
+
     render_header()
 
     if st.session_state.show_settings:

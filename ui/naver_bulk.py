@@ -55,13 +55,55 @@ def render_naver_bulk():
     if df_raw is not None and df_cj is not None:
         if st.button("작업 실행", type="primary"):
             try:
-                result_df = build_naver_bulk(df_raw, df_cj)
-                match_count = result_df["송장번호"].fillna("").astype(str).str.strip().ne("").sum()
-                total = len(result_df)
+                result_df, debug_info = build_naver_bulk(df_raw, df_cj)
+                # 주문번호 매칭 결과는 debug_info에서 가져옴
+                match_count = debug_info['matched_count']
+                total = debug_info['total_count']
+
+                # 송장번호가 실제로 채워진 건수 (운송장번호 데이터가 있는 경우)
+                invoice_filled_count = result_df["송장번호"].fillna("").astype(str).str.strip().ne("").sum()
+
+                # 디버그 정보 표시
+                with st.expander("🔍 매칭 디버그 정보", expanded=(match_count == 0)):
+                    st.markdown(f"**로우데이터:** {debug_info['raw_count']}건")
+                    st.markdown(f"**CJ 파일:** {debug_info['cj_count']}건 (사용 컬럼: `{debug_info['key_col']}`)")
+                    st.markdown(f"**주문번호 매칭:** {match_count}/{total}건")
+                    st.markdown(f"**송장번호 채워짐:** {invoice_filled_count}/{total}건")
+
+                    st.markdown("---")
+                    st.markdown("**로우데이터 상품주문번호 샘플 (정규화 전 → 후)**")
+                    for i, sample in enumerate(debug_info["raw_samples"]):
+                        st.code(f"{i+1}. '{sample['original']}' ({sample['type']}) → '{sample['normalized']}'")
+
+                    st.markdown("**CJ 파일 고객주문번호 샘플 (정규화 전 → 후)**")
+                    has_invoice = debug_info.get("has_invoice_col", False)
+                    if has_invoice:
+                        st.caption("운송장번호 컬럼: ✅ 있음")
+                        for i, sample in enumerate(debug_info["cj_samples"]):
+                            invoice_info = f" | 운송장: '{sample.get('invoice', '')}'" if sample.get('invoice') else " | 운송장: (없음)"
+                            st.code(f"{i+1}. '{sample['original']}' ({sample['type']}) → '{sample['normalized']}'{invoice_info}")
+                    else:
+                        st.caption("⚠️ 운송장번호 컬럼: 없음 (CJ 파일에 '운송장번호' 컬럼이 없습니다)")
+                        for i, sample in enumerate(debug_info["cj_samples"]):
+                            st.code(f"{i+1}. '{sample['original']}' ({sample['type']}) → '{sample['normalized']}'")
+
+                    if "unmatched" in debug_info:
+                        st.markdown("---")
+                        st.markdown(f"**⚠️ 매칭 안 된 주문번호:** {debug_info['unmatched_count']}개")
+                        for i, key in enumerate(debug_info["unmatched"]):
+                            st.code(f"{i+1}. '{key}'")
+
+                        st.markdown("**CJ 파일에 있는 키 샘플 (최대 10개)**")
+                        for i, key in enumerate(debug_info["cj_keys_sample"]):
+                            st.code(f"{i+1}. '{key}'")
+
                 if match_count == 0:
-                    st.warning("주문번호 매칭 결과가 0건입니다. 두 파일의 주문번호/고객주문번호를 확인하세요.")
+                    st.warning("주문번호 매칭 결과가 0건입니다. 위의 디버그 정보를 확인하세요.")
                     st.session_state.naver_bulk_result = None
                     return
+
+                if invoice_filled_count == 0:
+                    st.warning(f"⚠️ 주문번호는 {match_count}건 매칭되었으나, CJ 파일에 운송장번호 데이터가 없습니다. CJ 파일을 확인하세요.")
 
                 buf = io.BytesIO()
                 result_df.to_excel(buf, index=False)
@@ -74,7 +116,7 @@ def render_naver_bulk():
                     "match": match_count,
                     "total": total,
                 }
-                st.success(f"작업 완료: {filename} (운송장 매칭 {match_count}/{total})")
+                st.success(f"작업 완료: {filename} (주문번호 매칭 {match_count}/{total}, 송장번호 {invoice_filled_count}건)")
             except Exception as e:
                 st.error(f"처리 중 오류가 발생했습니다: {e}")
 
