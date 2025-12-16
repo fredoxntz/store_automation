@@ -9,7 +9,7 @@ def get_sender_defaults() -> dict[str, str]:
     defaults = {
         "name": "과일선물은 청과옥",
         "phone": "010-8238-0368",
-        "address": "서울특별시 서초구 서초대로15길 13-4 (방배동) 102호",
+        "address": "경기도 남양주시 별내동 718-1 a동(oen 옆)",
     }
     if example_path.exists():
         try:
@@ -171,7 +171,7 @@ def build_coupang_bulk(raw_df: pd.DataFrame, cj_df: pd.DataFrame) -> pd.DataFram
         "번호": pick("번호"),
         "묶음배송번호": pick("묶음배송번호"),
         "주문번호": pick("주문번호").apply(_normalize_order),
-        "택배사": "CJ대한통운",
+        "택배사": "CJ 대한통운",
         "운송장번호": merged["__운송장번호"],
         "분리배송 Y/N": pick("분리배송 Y/N"),
         "분리배송 출고예정일": pick("분리배송 출고예정일"),

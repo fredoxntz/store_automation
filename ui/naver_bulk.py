@@ -106,7 +106,7 @@ def render_naver_bulk():
                     st.warning(f"⚠️ 주문번호는 {match_count}건 매칭되었으나, CJ 파일에 운송장번호 데이터가 없습니다. CJ 파일을 확인하세요.")
 
                 buf = io.BytesIO()
-                result_df.to_excel(buf, index=False)
+                result_df.to_excel(buf, index=False, sheet_name="발송처리")
                 buf.seek(0)
                 filename = f"네이버_대량등록_{dt.datetime.now():%y%m%d}.xlsx"
                 st.session_state.naver_bulk_result = {

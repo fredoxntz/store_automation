@@ -6,27 +6,32 @@ import streamlit as st
 def read_excel_with_password(file, password=None, **kwargs):
     """
     비밀번호로 보호된 엑셀 파일을 읽습니다.
+    자동으로 비밀번호 없이 시도한 후, 실패하면 "1111"로 시도합니다.
 
     Args:
         file: 업로드된 파일 객체 또는 파일 경로
-        password: 엑셀 파일 비밀번호 (선택사항)
+        password: 엑셀 파일 비밀번호 (선택사항, 기본값: 자동으로 "1111" 시도)
         **kwargs: pd.read_excel에 전달할 추가 인자 (예: header=1)
 
     Returns:
         pandas.DataFrame: 엑셀 데이터
     """
-    if password:
+    # 먼저 비밀번호 없이 시도
+    try:
+        file.seek(0)
+        return pd.read_excel(file, **kwargs)
+    except Exception:
+        # 실패하면 기본 비밀번호 "1111"로 시도
         try:
             import msoffcrypto
 
-            # 파일 객체를 BytesIO로 변환
             file.seek(0)
             encrypted = io.BytesIO(file.read())
             decrypted = io.BytesIO()
 
             # 비밀번호로 파일 복호화
             office_file = msoffcrypto.OfficeFile(encrypted)
-            office_file.load_key(password=password)
+            office_file.load_key(password=password if password else "1111")
             office_file.decrypt(decrypted)
 
             # 복호화된 파일을 pandas로 읽기
@@ -38,13 +43,9 @@ def read_excel_with_password(file, password=None, **kwargs):
             st.code("pip install msoffcrypto-tool", language="bash")
             raise
         except Exception as e:
-            st.error(f"파일 복호화 중 오류가 발생했습니다: {str(e)}")
-            st.info("비밀번호가 올바른지 확인해주세요.")
+            st.error(f"파일을 읽는 중 오류가 발생했습니다: {str(e)}")
+            st.info("파일이 비밀번호로 보호되어 있다면 비밀번호가 '1111'인지 확인해주세요.")
             raise
-    else:
-        # 비밀번호가 없으면 일반적인 방법으로 읽기
-        file.seek(0)
-        return pd.read_excel(file, **kwargs)
 
 
 def render_password_input(key_prefix, label="파일 비밀번호 (선택사항)"):
@@ -62,7 +63,8 @@ def render_password_input(key_prefix, label="파일 비밀번호 (선택사항)"
         password = st.text_input(
             label,
             type="password",
+            placeholder="1111",
             key=f"{key_prefix}_password",
-            help="엑셀 파일에 비밀번호가 설정되어 있다면 입력하세요.",
+            help="엑셀 파일에 비밀번호가 설정되어 있다면 입력하세요. (비워두면 자동으로 1111 시도)",
         )
         return password if password else None

@@ -399,7 +399,7 @@ def build_naver_bulk(raw_df: pd.DataFrame, cj_df: pd.DataFrame) -> tuple[pd.Data
     data = {
         "상품주문번호": merged["__key"],
         "배송방법": pick("배송방법", "택배"),
-        "택배사": "CJ대한통운",  # 항상 CJ대한통운으로 설정
+        "택배사": "CJ 대한통운",  # 항상 CJ 대한통운으로 설정
         "송장번호": merged["__송장"],
     }
 
