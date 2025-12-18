@@ -31,6 +31,14 @@ def save_config(config: dict) -> bool:
 
 def get_openai_api_key() -> str:
     """Return stored OpenAI API key if available."""
+    # 1순위: Streamlit secrets
+    try:
+        if hasattr(st, "secrets") and "openai_api_key" in st.secrets:
+            return st.secrets["openai_api_key"]
+    except Exception:
+        pass
+
+    # 2순위: config.json
     config = load_config()
     return config.get("openai_api_key", "")
 

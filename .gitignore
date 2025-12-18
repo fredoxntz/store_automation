@@ -12,6 +12,9 @@ wheels/
 # Virtual environments
 .venv
 
+# Streamlit secrets
+.streamlit/secrets.toml
+
 */xlsx/*
 */xlsx
 *.xlsx
