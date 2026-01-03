@@ -104,6 +104,8 @@ def render_naver_cj():
                 with st.spinner("AI로 날짜 정규화 중..."):
                     intermediate = normalize_dates_batch(intermediate, api_key, update_progress, debug_log)
                     st.session_state.naver_intermediate_table = intermediate
+                    if "naver_intermediate_editor" in st.session_state:
+                        del st.session_state.naver_intermediate_editor
 
                 progress_bar.empty()
                 status_text.empty()
@@ -115,28 +117,36 @@ def render_naver_cj():
         st.markdown("**중간 테이블 (수정 가능)**")
         st.caption("날짜가 잘못 변환된 경우 직접 수정할 수 있습니다. (YYYY-MM-DD 형식)")
 
-        edited_df = st.data_editor(
-            intermediate,
-            use_container_width=True,
-            num_rows="fixed",
-            disabled=[
-                "상품주문번호",
-                "수취인명",
-                "수취인연락처1",
-                "통합배송지",
-                "배송메세지",
-                "수량",
-                "옵션관리코드",
-                "도착희망날짜_원본",
-            ],
-            key="naver_intermediate_editor",
-        )
+        with st.form("naver_cj_review_form"):
+            edited_df = st.data_editor(
+                intermediate,
+                use_container_width=True,
+                num_rows="fixed",
+                disabled=[
+                    "상품주문번호",
+                    "수취인명",
+                    "수취인연락처1",
+                    "통합배송지",
+                    "배송메세지",
+                    "수량",
+                    "옵션관리코드",
+                    "도착희망날짜_원본",
+                ],
+                key="naver_intermediate_editor",
+            )
 
-        st.session_state.naver_intermediate_table = edited_df
+            col1, col2 = st.columns(2)
+            with col1:
+                apply_clicked = st.form_submit_button("수정사항 적용")
+            with col2:
+                next_clicked = st.form_submit_button("다음 단계: CJ 발주서 생성 →", type="primary")
+
+        if apply_clicked or next_clicked:
+            st.session_state.naver_intermediate_table = edited_df
 
         st.markdown("---")
         st.markdown("**📊 날짜별 주문 통계**")
-        date_counts = edited_df["도착희망날짜_정규화"].value_counts().sort_index()
+        date_counts = st.session_state.naver_intermediate_table["도착희망날짜_정규화"].value_counts().sort_index()
         date_counts_df = date_counts.reset_index()
         date_counts_df.columns = ["날짜", "주문 수"]
         st.dataframe(date_counts_df, width="stretch")
@@ -147,9 +157,11 @@ def render_naver_cj():
                 st.session_state.naver_workflow_step = "upload"
                 st.session_state.naver_intermediate_table = None
                 st.session_state.naver_raw_data = None
+                if "naver_intermediate_editor" in st.session_state:
+                    del st.session_state.naver_intermediate_editor
                 st.rerun()
         with col2:
-            if st.button("다음 단계: CJ 발주서 생성 →", type="primary"):
+            if next_clicked:
                 st.session_state.naver_workflow_step = "generate"
                 st.rerun()
 

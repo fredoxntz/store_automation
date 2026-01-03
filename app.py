@@ -292,17 +292,24 @@ def go(step: str, job: str | None = None, channel: str | None = None):
 def render_header():
     st.markdown(STYLE, unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([9, 1, 1])
+    col1, col2, col3, col4 = st.columns([8, 1, 1, 1])
     with col1:
         st.title("📦 송장 자동화")
     with col2:
+        st.write("")
+        st.markdown('<div class="settings-btn">', unsafe_allow_html=True)
+        if st.button("🏠", help="홈으로", key="home_btn"):
+            st.session_state.show_settings = False
+            reset()
+        st.markdown("</div>", unsafe_allow_html=True)
+    with col3:
         st.write("")
         st.markdown('<div class="settings-btn">', unsafe_allow_html=True)
         if st.button("⚙️", help="설정", key="settings_btn"):
             st.session_state.show_settings = True
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
-    with col3:
+    with col4:
         st.write("")
         st.markdown('<div class="settings-btn">', unsafe_allow_html=True)
         if st.button("🚪", help="로그아웃", key="logout_btn"):
