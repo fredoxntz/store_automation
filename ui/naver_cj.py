@@ -134,15 +134,7 @@ def render_naver_cj():
                 ],
                 key="naver_intermediate_editor",
             )
-
-            col1, col2 = st.columns(2)
-            with col1:
-                apply_clicked = st.form_submit_button("수정사항 적용")
-            with col2:
-                next_clicked = st.form_submit_button("다음 단계: CJ 발주서 생성 →", type="primary")
-
-        if apply_clicked or next_clicked:
-            st.session_state.naver_intermediate_table = edited_df
+            next_clicked = st.form_submit_button("다음 단계: CJ 발주서 생성 →", type="primary")
 
         st.markdown("---")
         st.markdown("**📊 날짜별 주문 통계**")
@@ -162,6 +154,7 @@ def render_naver_cj():
                 st.rerun()
         with col2:
             if next_clicked:
+                st.session_state.naver_intermediate_table = edited_df
                 st.session_state.naver_workflow_step = "generate"
                 st.rerun()
 
